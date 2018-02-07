@@ -2,6 +2,8 @@
 
 The goal is to collect at least 100 full stack projects available on various websites.
 
+# Collaboration
+Add project **title** and **description** in `projects.json` file and create a pull request.
 
 # Projects
 Click on projects to see **user story** in order to build it.
@@ -35,3 +37,4 @@ A place where people can get reviews.
 
 ## [Another Omegele](projects/another-omegele)
 Build another omegele with some extra fun.
+
