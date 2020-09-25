@@ -15,20 +15,6 @@ The goal is to collect at least 100 full stack projects available on various web
 - I can create a poll
 - I can invite users to vote on my poll
 
-# Video Calling App
-
-## User Story
-
-- I can login/register.
-- I can import my contact emails.
-- I can see my if any of my contact is online.
-- I can call my contacts.
-- I can pick a call.
-- I can mark my visiblity public or hidden.
-- I can see all users who have marked their visiblity public and start a call ( like omegele)
-- I can enter omegele mode where I will matched with a random user.
-- I can change the user in omegele mode.
-
 # Nightlife Coordination
 
 ## User Story
@@ -112,3 +98,18 @@ A portal of book reviews and more.
 - I can see my if any of my contact is online.
 - I can call my contacts.
 - I can pick a call.
+
+# Video Calling App
+
+## User Story
+
+- I can login/register.
+- I can import my contact emails.
+- I can see my if any of my contact is online.
+- I can call my contacts.
+- I can pick a call.
+- I can mark my visiblity public or hidden.
+- I can see all users who have marked their visiblity public and start a call ( like omegele)
+- I can enter omegele mode where I will matched with a random user.
+- I can change the user in omegele mode.
+
