@@ -1,1 +1,0 @@
-# Simple SEO Ready Blog
