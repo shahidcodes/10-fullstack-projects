@@ -1,14 +1,13 @@
 
 const app = require("./app");
 const connectDatabase = require("./config/database");
-const { port } = require("./config/env");
 
 const startServer = async () => {
   try {
     await connectDatabase();
 
-    const server = app.listen(port, () => {
-      console.log(`VoteSphere API running on port ${port}`);
+    const server = app.listen(5000, () => {
+      console.log(`VoteSphere API running on port ${5000}`);
     });
 
     const shutdown = async (signal) => {

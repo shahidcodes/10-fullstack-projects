@@ -1,13 +1,18 @@
 const mongoose = require("mongoose");
+const { mongoUri } = require("./env");
 
 const connectDatabase = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    if (!mongoUri) {
+      throw new Error("MONGO_URI is missing. Check your .env file.");
+    }
 
-    console.log("MongoDB connected successfully");
+    await mongoose.connect(mongoUri);
+
+    console.log("MongoDB Atlas connected successfully");
   } catch (error) {
     console.error("MongoDB connection failed:", error.message);
-    process.exit(1);
+    throw error;
   }
 };
 

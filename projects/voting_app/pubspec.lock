@@ -18,7 +18,7 @@ packages:
     source: hosted
     version: "2.13.1"
   bloc:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: bloc
       sha256: c3e0f19010c7a337d789b17993863563e6847f17871bcd0b96232cded59d675c

@@ -8,7 +8,7 @@ const {
   generateTokenPair,
   verifyRefreshToken,
   hashToken,
-} = require("../../utils/token.util");
+} = require("../../utils/token.utils");
 
 const { bcryptRounds } = require("../../config/env");
 
