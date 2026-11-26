@@ -1,3 +1,6 @@
 make-projects.js
 SampleREADME.md
 testREADME.md
+projects/voting_app/backend/node_modules/
+projects/voting_app/backend/.env
+projects/voting_app/backend/package-lock.json

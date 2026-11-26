@@ -1,0 +1,426 @@
+'use strict';
+
+/*!
+ * Module dependencies.
+ */
+
+const MongooseCollection = require('../../collection');
+const MongooseError = require('../../error/mongooseError');
+const Collection = require('mongodb').Collection;
+const ObjectId = require('../../types/objectid');
+const getConstructorName = require('../../helpers/getConstructorName');
+const internalToObjectOptions = require('../../options').internalToObjectOptions;
+const stream = require('stream');
+const util = require('util');
+
+const formatToObjectOptions = Object.freeze({ ...internalToObjectOptions, copyTrustedSymbol: false });
+
+/**
+ * A [node-mongodb-native](https://github.com/mongodb/node-mongodb-native) collection implementation.
+ *
+ * All methods methods from the [node-mongodb-native](https://github.com/mongodb/node-mongodb-native) driver are copied and wrapped in queue management.
+ *
+ * @inherits Collection https://mongodb.github.io/node-mongodb-native/7.0/classes/Collection.html
+ * @api private
+ */
+
+function NativeCollection(name, conn, options) {
+  this.collection = null;
+  this.Promise = options.Promise || Promise;
+  this.modelName = options.modelName;
+  delete options.modelName;
+  this._closed = false;
+  MongooseCollection.apply(this, arguments);
+}
+
+/*!
+ * Inherit from abstract Collection.
+ */
+
+Object.setPrototypeOf(NativeCollection.prototype, MongooseCollection.prototype);
+
+/**
+ * Called when the connection opens.
+ *
+ * @api private
+ */
+
+NativeCollection.prototype.onOpen = function() {
+  this.collection = this.conn.db.collection(this.name);
+  MongooseCollection.prototype.onOpen.call(this);
+  return this.collection;
+};
+
+/**
+ * Called when the connection closes
+ *
+ * @api private
+ */
+
+NativeCollection.prototype.onClose = function(force) {
+  MongooseCollection.prototype.onClose.call(this, force);
+};
+
+/**
+ * Helper to get the collection, in case `this.collection` isn't set yet.
+ * May happen if `bufferCommands` is false and created the model when
+ * Mongoose was disconnected.
+ *
+ * @api private
+ */
+
+NativeCollection.prototype._getCollection = function _getCollection() {
+  if (this.collection) {
+    return this.collection;
+  }
+  if (this.conn.db != null) {
+    this.collection = this.conn.db.collection(this.name);
+    return this.collection;
+  }
+  return null;
+};
+
+/**
+ * Copy the collection methods and make them subject to queues
+ * @param {number|string} I
+ * @api private
+ */
+
+function iter(i) {
+  NativeCollection.prototype[i] = function() {
+    const collection = this._getCollection();
+    const args = arguments;
+    const _this = this;
+    const globalDebug = _this?.conn?.base?.options?.debug;
+    const connectionDebug = _this?.conn?.options?.debug;
+    const debug = connectionDebug == null ? globalDebug : connectionDebug;
+
+    // If user force closed, queueing will hang forever. See #5664
+    if (this.conn.$wasForceClosed) {
+      const error = new MongooseError('Connection was force closed');
+      if (args.length > 0 &&
+        typeof args[args.length - 1] === 'function') {
+        args[args.length - 1](error);
+        return;
+      } else {
+        throw error;
+      }
+    }
+
+    // Lazily generate opId and argsArray only if necessary because they have
+    // a non-trivial performance cost.
+    let opId = null;
+    let argsArray = null;
+    const hasOperationListeners = this.conn.listenerCount('operation-start') > 0 || this.conn.listenerCount('operation-end') > 0;
+    if (hasOperationListeners || debug) {
+      opId = new ObjectId();
+    }
+
+    let timeout = null;
+    let waitForBufferPromise = null;
+    if (this._shouldBufferCommands() && this.buffer) {
+      if (opId == null) {
+        opId = new ObjectId();
+      }
+      this.conn.emit('buffer', {
+        _id: opId,
+        modelName: _this.modelName,
+        collectionName: _this.name,
+        method: i,
+        args: args
+      });
+
+      const bufferTimeoutMS = this._getBufferTimeoutMS();
+      waitForBufferPromise = new Promise((resolve, reject) => {
+        this.addQueue(resolve);
+
+        timeout = setTimeout(() => {
+          const removed = this.removeQueue(resolve);
+          if (removed) {
+            const message = 'Operation `' + this.name + '.' + i + '()` buffering timed out after ' +
+              bufferTimeoutMS + 'ms';
+            const err = new MongooseError(message);
+            this.conn.emit('buffer-end', { _id: opId, modelName: _this.modelName, collectionName: _this.name, method: i, error: err });
+            reject(err);
+          }
+        }, bufferTimeoutMS);
+      });
+
+      return waitForBufferPromise.then(() => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+        return this[i].apply(this, args);
+      });
+    }
+
+    if (debug) {
+      if (typeof debug === 'function') {
+        if (argsArray == null) {
+          argsArray = Array.from(args);
+        }
+        let argsToAdd = null;
+        if (typeof argsArray[argsArray.length - 1] == 'function') {
+          argsToAdd = argsArray.slice(0, argsArray.length - 1);
+        } else {
+          argsToAdd = argsArray;
+        }
+        debug.apply(_this,
+          [_this.name, i].concat(argsToAdd));
+      } else if (debug instanceof stream.Writable) {
+        this.$printToStream(_this.name, i, args, debug);
+      } else {
+        const color = debug.color == null ? true : debug.color;
+        const shell = debug.shell == null ? false : debug.shell;
+        const timestamp = debug.timestamp == null ? false : debug.timestamp;
+        this.$print(_this.name, i, args, color, shell, timestamp);
+      }
+    }
+
+    if (hasOperationListeners) {
+      if (argsArray == null) {
+        argsArray = Array.from(args);
+      }
+      this.conn.emit('operation-start', { _id: opId, modelName: _this.modelName, collectionName: this.name, method: i, params: argsArray });
+    }
+
+    try {
+      if (collection == null) {
+        const message = 'Cannot call `' + this.name + '.' + i + '()` before initial connection ' +
+          'is complete if `bufferCommands = false`. Make sure you `await mongoose.connect()` if ' +
+          'you have `bufferCommands = false`.';
+        throw new MongooseError(message);
+      }
+
+      const ret = collection[i].apply(collection, args);
+      if (typeof ret?.then === 'function') {
+        return ret.then(
+          result => {
+            if (timeout != null) {
+              clearTimeout(timeout);
+            }
+            if (hasOperationListeners) {
+              this.conn.emit('operation-end', { _id: opId, modelName: _this.modelName, collectionName: this.name, method: i, result });
+            }
+            return result;
+          },
+          error => {
+            if (timeout != null) {
+              clearTimeout(timeout);
+            }
+            if (hasOperationListeners) {
+              this.conn.emit('operation-end', { _id: opId, modelName: _this.modelName, collectionName: this.name, method: i, error });
+            }
+            throw error;
+          }
+        );
+      }
+
+      if (hasOperationListeners) {
+        this.conn.emit('operation-end', { _id: opId, modelName: _this.modelName, collectionName: this.name, method: i, result: ret });
+      }
+      if (timeout != null) {
+        clearTimeout(timeout);
+      }
+      return ret;
+    } catch (error) {
+      if (timeout != null) {
+        clearTimeout(timeout);
+      }
+      if (hasOperationListeners) {
+        this.conn.emit('operation-end', { _id: opId, modelName: _this.modelName, collectionName: this.name, method: i, error: error });
+      }
+      throw error;
+    }
+  };
+}
+
+for (const key of Object.getOwnPropertyNames(Collection.prototype)) {
+  // Janky hack to work around gh-3005 until we can get rid of the mongoose
+  // collection abstraction
+  const descriptor = Object.getOwnPropertyDescriptor(Collection.prototype, key);
+  // Skip properties with getters because they may throw errors (gh-8528)
+  if (descriptor.get !== undefined) {
+    continue;
+  }
+  if (typeof Collection.prototype[key] !== 'function') {
+    continue;
+  }
+
+  iter(key);
+}
+
+/**
+ * Debug print helper
+ *
+ * @api public
+ * @method $print
+ */
+
+NativeCollection.prototype.$print = function(name, i, args, color, shell, timestamp) {
+  let prefix = '';
+  if (timestamp) {
+    const ts = new Date().toISOString();
+    prefix = color ? `\x1B[0;90m[${ts}]\x1B[0m ` : `[${ts}] `;
+  }
+  const moduleName = color ? '\x1B[0;36mMongoose:\x1B[0m ' : 'Mongoose: ';
+  const functionCall = [name, i].join('.');
+  const _args = [];
+  for (let j = args.length - 1; j >= 0; --j) {
+    if (this.$format(args[j]) || _args.length) {
+      _args.unshift(this.$format(args[j], color, shell));
+    }
+  }
+  const params = '(' + _args.join(', ') + ')';
+
+  console.info(prefix + moduleName + functionCall + params);
+};
+
+/**
+ * Debug print helper
+ *
+ * @api public
+ * @method $printToStream
+ */
+
+NativeCollection.prototype.$printToStream = function(name, i, args, stream) {
+  const functionCall = [name, i].join('.');
+  const _args = [];
+  for (let j = args.length - 1; j >= 0; --j) {
+    if (this.$format(args[j]) || _args.length) {
+      _args.unshift(this.$format(args[j]));
+    }
+  }
+  const params = '(' + _args.join(', ') + ')';
+
+  stream.write(functionCall + params, 'utf8');
+};
+
+/**
+ * Formatter for debug print args
+ *
+ * @api public
+ * @method $format
+ */
+
+NativeCollection.prototype.$format = function(arg, color, shell) {
+  const type = typeof arg;
+  if (type === 'function' || type === 'undefined') return '';
+  return format(arg, false, color, shell);
+};
+
+/**
+ * Debug print helper
+ * @param {any} representation
+ * @api private
+ */
+
+function inspectable(representation) {
+  const ret = {
+    inspect: function() { return representation; }
+  };
+  if (util.inspect.custom) {
+    ret[util.inspect.custom] = ret.inspect;
+  }
+  return ret;
+}
+function map(o) {
+  return format(o, true);
+}
+function formatObjectId(x, key) {
+  x[key] = inspectable('ObjectId("' + x[key].toHexString() + '")');
+}
+function formatDate(x, key, shell) {
+  if (shell) {
+    x[key] = inspectable('ISODate("' + x[key].toUTCString() + '")');
+  } else {
+    x[key] = inspectable('new Date("' + x[key].toUTCString() + '")');
+  }
+}
+function format(obj, sub, color, shell) {
+  if (typeof obj?.toBSON === 'function') {
+    obj = obj.toBSON();
+  }
+  if (obj == null) {
+    return obj;
+  }
+
+  const clone = require('../../helpers/clone');
+  // `sub` indicates `format()` was called recursively, so skip cloning because we already
+  // did a deep clone on the top-level object.
+  let x = sub ? obj : clone(obj, formatToObjectOptions);
+  const constructorName = getConstructorName(x);
+
+  if (constructorName === 'Binary') {
+    x = 'BinData(' + x.sub_type + ', "' + x.toString('base64') + '")';
+  } else if (constructorName === 'ObjectId') {
+    x = inspectable('ObjectId("' + x.toHexString() + '")');
+  } else if (constructorName === 'Date') {
+    x = inspectable('new Date("' + x.toUTCString() + '")');
+  } else if (constructorName === 'Object') {
+    const keys = Object.keys(x);
+    const numKeys = keys.length;
+    let key;
+    for (let i = 0; i < numKeys; ++i) {
+      key = keys[i];
+      if (x[key]) {
+        let error;
+        if (typeof x[key].toBSON === 'function') {
+          try {
+            // `session.toBSON()` throws an error. This means we throw errors
+            // in debug mode when using transactions, see gh-6712. As a
+            // workaround, catch `toBSON()` errors, try to serialize without
+            // `toBSON()`, and rethrow if serialization still fails.
+            x[key] = x[key].toBSON();
+          } catch (_error) {
+            error = _error;
+          }
+        }
+        const _constructorName = getConstructorName(x[key]);
+        if (_constructorName === 'Binary') {
+          x[key] = 'BinData(' + x[key].sub_type + ', "' +
+            x[key].buffer.toString('base64') + '")';
+        } else if (_constructorName === 'Object') {
+          x[key] = format(x[key], true);
+        } else if (_constructorName === 'ObjectId') {
+          formatObjectId(x, key);
+        } else if (_constructorName === 'Date') {
+          formatDate(x, key, shell);
+        } else if (_constructorName === 'ClientSession') {
+          x[key] = inspectable('ClientSession("' +
+            (x[key]?.id?.id?.buffer || '').toString('hex') + '")');
+        } else if (Array.isArray(x[key])) {
+          x[key] = x[key].map(map);
+        } else if (error != null) {
+          // If there was an error with `toBSON()` and the object wasn't
+          // already converted to a string representation, rethrow it.
+          // Open to better ideas on how to handle this.
+          throw error;
+        }
+      }
+    }
+  }
+  if (sub) {
+    return x;
+  }
+
+  return util.
+    inspect(x, false, 10, color).
+    replace(/\n/g, '').
+    replace(/\s{2,}/g, ' ');
+}
+
+/**
+ * Retrieves information about this collections indexes.
+ *
+ * @method getIndexes
+ * @api public
+ */
+
+NativeCollection.prototype.getIndexes = NativeCollection.prototype.indexInformation;
+
+/*!
+ * Module exports.
+ */
+
+module.exports = NativeCollection;

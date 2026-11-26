@@ -1,0 +1,1242 @@
+/// <reference path="./aggregate.d.ts" />
+/// <reference path="./callback.d.ts" />
+/// <reference path="./collection.d.ts" />
+/// <reference path="./connection.d.ts" />
+/// <reference path="./cursor.d.ts" />
+/// <reference path="./document.d.ts" />
+/// <reference path="./error.d.ts" />
+/// <reference path="./expressions.d.ts" />
+/// <reference path="./helpers.d.ts" />
+/// <reference path="./middlewares.d.ts" />
+/// <reference path="./indexes.d.ts" />
+/// <reference path="./models.d.ts" />
+/// <reference path="./mongooseoptions.d.ts" />
+/// <reference path="./pipelinestage.d.ts" />
+/// <reference path="./populate.d.ts" />
+/// <reference path="./query.d.ts" />
+/// <reference path="./schemaoptions.d.ts" />
+/// <reference path="./schematypes.d.ts" />
+/// <reference path="./session.d.ts" />
+/// <reference path="./types.d.ts" />
+/// <reference path="./utility.d.ts" />
+/// <reference path="./validation.d.ts" />
+/// <reference path="./inferhydrateddoctype.d.ts" />
+/// <reference path="./inferrawdoctype.d.ts" />
+/// <reference path="./inferschematype.d.ts" />
+/// <reference path="./virtuals.d.ts" />
+/// <reference path="./tracing.d.ts" />
+/// <reference path="./augmentations.d.ts" />
+
+declare class NativeDate extends globalThis.Date { }
+
+declare module 'mongoose' {
+  import Kareem = require('kareem');
+  import events = require('events');
+  import mongodb = require('mongodb');
+  import mongoose = require('mongoose');
+
+  export type Mongoose = typeof mongoose;
+
+  /**
+   * Mongoose constructor. The exports object of the `mongoose` module is an instance of this
+   * class. Most apps will only use this one instance.
+   */
+  export const Mongoose: new (options?: MongooseOptions | null) => Mongoose;
+
+  export let Promise: any;
+
+  /**
+   * Can be extended to explicitly type specific models.
+   */
+  export interface Models {
+    [modelName: string]: Model<any>
+  }
+
+  /** An array containing all models associated with this Mongoose instance. */
+  export const models: Models;
+
+  /**
+   * Removes the model named `name` from the default connection, if it exists.
+   * You can use this function to clean up any models you created in your tests to
+   * prevent OverwriteModelErrors.
+   */
+  export function deleteModel(name: string | RegExp): Mongoose;
+
+  /**
+   * Sanitizes query filters against query selector injection attacks by wrapping
+   * any nested objects that have a property whose name starts with `$` in a `$eq`.
+   */
+  export function sanitizeFilter<T>(filter: QueryFilter<T>): QueryFilter<T>;
+
+  /** Gets mongoose options */
+  export function get<K extends keyof MongooseOptions>(key: K): MongooseOptions[K];
+
+  export function omitUndefined<T extends Record<string, any>>(val: T): T;
+
+  export type HydratedDocFromModel<M extends Model<any>> = ReturnType<M['hydrate']>;
+
+  /* ! ignore */
+  export type CompileModelOptions = {
+    overwriteModels?: boolean,
+    connection?: Connection
+  };
+
+  export function model<TSchema extends Schema = any>(
+    name: string,
+    schema?: TSchema,
+    collection?: string,
+    options?: CompileModelOptions
+  ): Model<
+    InferSchemaType<TSchema>,
+    ObtainSchemaGeneric<TSchema, 'TQueryHelpers'>,
+    ObtainSchemaGeneric<TSchema, 'TInstanceMethods'>,
+    ObtainSchemaGeneric<TSchema, 'TVirtuals'>,
+    // If first schema generic param is set, that means we have an explicit raw doc type,
+    // so user should also specify a hydrated doc type if the auto inferred one isn't correct.
+    IsItRecordAndNotAny<ObtainSchemaGeneric<TSchema, 'EnforcedDocType'>> extends true
+      ? ObtainSchemaGeneric<TSchema, 'THydratedDocumentType'>
+      : HydratedDocument<
+        InferSchemaType<TSchema>,
+        ObtainSchemaGeneric<TSchema, 'TVirtuals'> & ObtainSchemaGeneric<TSchema, 'TInstanceMethods'>,
+        ObtainSchemaGeneric<TSchema, 'TQueryHelpers'>,
+        ObtainSchemaGeneric<TSchema, 'TVirtuals'>,
+        InferSchemaType<TSchema>,
+        ObtainSchemaGeneric<TSchema, 'TSchemaOptions'>
+      >,
+    TSchema,
+    Default__v<Require_id<ObtainSchemaGeneric<TSchema, 'TLeanResultType'>>>
+  > & ObtainSchemaGeneric<TSchema, 'TStaticMethods'>;
+
+  export function model<T>(name: string, schema?: Schema<T, any, any> | Schema<T & Document, any, any>, collection?: string, options?: CompileModelOptions): Model<T>;
+
+  export function model<T, U, TQueryHelpers = {}>(
+    name: string,
+    schema?: Schema<T, any, any, TQueryHelpers, any, any, any>,
+    collection?: string,
+    options?: CompileModelOptions
+  ): U;
+
+  /** Returns an array of model names created on this instance of Mongoose. */
+  export function modelNames(): Array<string>;
+
+  /**
+   * Overwrites the current driver used by this Mongoose instance. A driver is a
+   * Mongoose-specific interface that defines functions like `find()`.
+   */
+  export function setDriver(driver: any): Mongoose;
+
+  /** The node-mongodb-native driver Mongoose uses. */
+  export { mongodb as mongo };
+
+  /** Declares a global plugin executed on all Schemas. */
+  export function plugin(fn: (schema: Schema, opts?: any) => void, opts?: any): Mongoose;
+
+  /** Getter/setter around function for pluralizing collection names. */
+  export function pluralize(fn?: ((str: string) => string) | null): ((str: string) => string) | null;
+
+  /** Sets mongoose options */
+  export function set<K extends keyof MongooseOptions>(key: K, value: MongooseOptions[K]): Mongoose;
+  export function set(options: { [K in keyof MongooseOptions]: MongooseOptions[K] }): Mongoose;
+
+  /** The Mongoose version */
+  export const version: string;
+
+  export type AnyKeys<T> = { [P in keyof T]?: T[P] | any };
+  export interface AnyObject {
+    [k: string]: any
+  }
+
+  export type Require_id<T> = T extends { _id?: infer U }
+    ? IfAny<U, T & { _id: Types.ObjectId }, T & Required<{ _id: U }>>
+    : T & { _id: Types.ObjectId };
+
+  export type Default_id<T, TSchemaOptions = {}> = TSchemaOptions extends { _id: false } ? T : Require_id<T>;
+
+  export type Default__v<T, TSchemaOptions = {}> = TSchemaOptions extends { versionKey: false }
+    ? T
+    : TSchemaOptions extends { versionKey: infer VK }
+      ? (
+          // If VK is a *literal* string, add that property
+          T & {
+            [K in VK as K extends string
+              ? (string extends K ? never : K) // drop if wide string
+              : never
+            ]: number
+          }
+        )
+      : T extends { __v?: infer U }
+        ? T
+        : T & { __v: number };
+
+  /** Helper type for getting the hydrated document type from the raw document type. The hydrated document type is what `new MyModel()` returns. */
+  export type HydratedDocument<
+    HydratedDocPathsType,
+    TOverrides = {},
+    TQueryHelpers = {},
+    TVirtuals = {},
+    RawDocType = HydratedDocPathsType,
+    TSchemaOptions = DefaultSchemaOptions
+  > = IfAny<
+    HydratedDocPathsType,
+    any,
+    TOverrides extends Record<string, never> ?
+      Document<unknown, TQueryHelpers, RawDocType, TVirtuals, TSchemaOptions> &
+      Default__v<Require_id<HydratedDocPathsType>, TSchemaOptions> &
+      IfEquals<
+        TVirtuals,
+        {},
+        AddDefaultId<HydratedDocPathsType, {}, TSchemaOptions>,
+        TVirtuals
+      > :
+      IfAny<
+        TOverrides,
+        Document<unknown, TQueryHelpers, RawDocType, TVirtuals, TSchemaOptions> & Default__v<Require_id<HydratedDocPathsType>, TSchemaOptions>,
+        Document<unknown, TQueryHelpers, RawDocType, TVirtuals, TSchemaOptions> & MergeType<
+          Default__v<Require_id<HydratedDocPathsType>, TSchemaOptions>,
+          HydratedDocumentOverrides<
+            IfEquals<
+              TOverrides,
+              {},
+              TOverrides,
+              TOverrides & AddDefaultId<HydratedDocPathsType, TVirtuals, TSchemaOptions>
+            >
+          >
+        >
+      >
+  >;
+
+  export type HydratedSingleSubdocument<
+    DocType,
+    TOverrides = {}
+  > = IfAny<
+  DocType,
+  any,
+  TOverrides extends Record<string, never> ?
+    Types.Subdocument<unknown, Record<string, never>, DocType> & Require_id<DocType> :
+    IfAny<
+      TOverrides,
+      Types.Subdocument<unknown, Record<string, never>, DocType> & Require_id<DocType>,
+      Types.Subdocument<unknown, Record<string, never>, DocType> & MergeType<
+        Require_id<DocType>,
+        TOverrides
+      >
+    >
+  >;
+  export type HydratedArraySubdocument<DocType, TOverrides = {}> = IfAny<
+    DocType,
+    any,
+    TOverrides extends Record<string, never> ?
+      Types.ArraySubdocument<unknown, Record<string, never>, DocType> & Require_id<DocType> :
+      IfAny<
+        TOverrides,
+        Types.ArraySubdocument<unknown, Record<string, never>, DocType> & Require_id<DocType>,
+        Types.ArraySubdocument<unknown, Record<string, never>, DocType> & MergeType<
+          Require_id<DocType>,
+          TOverrides
+        >
+      >
+    >;
+
+  export type HydratedDocumentFromSchema<TSchema extends Schema> = HydratedDocument<
+    InferSchemaType<TSchema>,
+    ObtainSchemaGeneric<TSchema, 'TInstanceMethods'> & ObtainSchemaGeneric<TSchema, 'TVirtuals'>,
+    ObtainSchemaGeneric<TSchema, 'TQueryHelpers'>,
+    ObtainSchemaGeneric<TSchema, 'TVirtuals'>,
+    InferSchemaType<TSchema>,
+    ObtainSchemaGeneric<TSchema, 'TSchemaOptions'>
+  >;
+
+  export interface TagSet {
+    [k: string]: string;
+  }
+
+  export interface ToObjectOptions<RawDocType = unknown, THydratedDocumentType = HydratedDocument<RawDocType>> {
+    /** if `options.virtuals = true`, you can set `options.aliases = false` to skip applying aliases. This option is a no-op if `options.virtuals = false`. */
+    aliases?: boolean;
+    /** if true, replace any conventionally populated paths with the original id in the output. Has no affect on virtual populated paths. */
+    depopulate?: boolean;
+    /** if true, convert Maps to POJOs. Useful if you want to `JSON.stringify()` the result of `toObject()`. */
+    flattenMaps?: boolean;
+    /** if true, convert any ObjectIds in the result to 24 character hex strings. */
+    flattenObjectIds?: boolean;
+    /** if true, convert any UUIDs in the result to 36 character hex strings. */
+    flattenUUIDs?: boolean;
+    /** apply all getters (path and virtual getters) */
+    getters?: boolean;
+    /** remove empty objects (defaults to true) */
+    minimize?: boolean;
+    /** If true, the resulting object will only have fields that are defined in the document's schema. By default, `toJSON()` & `toObject()` returns all fields in the underlying document from MongoDB, including ones that are not listed in the schema. */
+    schemaFieldsOnly?: boolean;
+    /** if set, mongoose will call this function to allow you to transform the returned object */
+    transform?: boolean | ((
+      doc: THydratedDocumentType,
+      ret: Default__v<Require_id<RawDocType>>,
+      options: ToObjectOptions<THydratedDocumentType>
+    ) => any);
+    /** If true, omits fields that are excluded in this document's projection. Unless you specified a projection, this will omit any field that has `select: false` in the schema. */
+    useProjection?: boolean;
+    /** if false, exclude the version key (`__v` by default) from the output */
+    versionKey?: boolean;
+    /** apply virtual getters (can override getters option) */
+    virtuals?: boolean | string[];
+  }
+
+  export type DiscriminatorModel<M, T> = T extends Model<infer T, infer TQueryHelpers, infer TInstanceMethods, infer TVirtuals>
+    ?
+    M extends Model<infer M, infer MQueryHelpers, infer MInstanceMethods, infer MVirtuals>
+      ? Model<Omit<M, keyof T> & T, MQueryHelpers | TQueryHelpers, MInstanceMethods | TInstanceMethods, MVirtuals | TVirtuals>
+      : M
+    : M;
+
+  export type DiscriminatorSchema<DocType, M, TInstanceMethods, TQueryHelpers, TVirtuals, TStaticMethods, DisSchema> =
+    DisSchema extends Schema<infer DisSchemaEDocType, infer DisSchemaM, infer DisSchemaInstanceMethods, infer DisSchemaQueryhelpers, infer DisSchemaVirtuals, infer DisSchemaStatics>
+      ? Schema<MergeType<DocType, DisSchemaEDocType>, DiscriminatorModel<DisSchemaM, M>, DisSchemaInstanceMethods | TInstanceMethods, DisSchemaQueryhelpers | TQueryHelpers, DisSchemaVirtuals | TVirtuals, DisSchemaStatics & TStaticMethods>
+      : Schema<DocType, M, TInstanceMethods, TQueryHelpers, TVirtuals, TStaticMethods>;
+
+  type QueryResultType<T> = T extends Query<infer ResultType, any> ? ResultType : never;
+
+  type PluginFunction<
+    DocType,
+    M,
+    TInstanceMethods,
+    TQueryHelpers,
+    TVirtuals,
+    TStaticMethods> = (schema: Schema<DocType, M, TInstanceMethods, TQueryHelpers, TVirtuals, TStaticMethods>, opts?: any) => void;
+
+  export class Schema<
+    RawDocType = any,
+    TModelType = Model<RawDocType, any, any, any>,
+    TInstanceMethods = {},
+    TQueryHelpers = {},
+    TVirtuals = {},
+    TStaticMethods = {},
+    TSchemaOptions = DefaultSchemaOptions,
+    DocType extends ApplySchemaOptions<
+      ObtainDocumentType<DocType, RawDocType, ResolveSchemaOptions<TSchemaOptions>>,
+      ResolveSchemaOptions<TSchemaOptions>
+    > = ApplySchemaOptions<
+      ObtainDocumentType<any, RawDocType, ResolveSchemaOptions<TSchemaOptions>>,
+      ResolveSchemaOptions<TSchemaOptions>
+    >,
+    THydratedDocumentType = HydratedDocument<
+      DocType,
+      AddDefaultId<DocType, TVirtuals, TSchemaOptions> & TInstanceMethods,
+      TQueryHelpers,
+      AddDefaultId<DocType, TVirtuals, TSchemaOptions>,
+      IsItRecordAndNotAny<RawDocType> extends true ? RawDocType : DocType,
+      ResolveSchemaOptions<TSchemaOptions>
+    >,
+    TSchemaDefinition = IfAny<RawDocType, unknown, SchemaDefinition<SchemaDefinitionType<RawDocType>, RawDocType, THydratedDocumentType>>,
+    LeanResultType = IsItRecordAndNotAny<RawDocType> extends true ? RawDocType : Default__v<Require_id<BufferToBinary<FlattenMaps<DocType>>>>
+  >
+    extends events.EventEmitter {
+    /**
+     * Create a new schema
+     */
+    constructor(
+      definition?: SchemaDefinition<SchemaDefinitionType<RawDocType>, RawDocType, THydratedDocumentType> | DocType,
+      options?: SchemaOptions<
+        FlatRecord<DocType>,
+        TInstanceMethods,
+        TQueryHelpers,
+        TStaticMethods,
+        TVirtuals,
+        THydratedDocumentType,
+        IfEquals<
+          TModelType,
+          Model<any, any, any, any>,
+          Model<DocType, TQueryHelpers, TInstanceMethods, TVirtuals, THydratedDocumentType>,
+          TModelType
+        >
+      > | ResolveSchemaOptions<TSchemaOptions>
+    );
+
+    /* Creates a new schema with the given definition and options. Equivalent to `new Schema(definition, options)`, but with better automatic type inference. */
+    static create<
+      TSchemaDefinition extends SchemaDefinition<undefined, RawDocType, THydratedDocumentType>,
+      TSchemaOptions extends DefaultSchemaOptions,
+      RawDocType extends ApplySchemaOptions<
+        InferRawDocType<TSchemaDefinition, ResolveSchemaOptions<TSchemaOptions>>,
+        ResolveSchemaOptions<TSchemaOptions>
+      >,
+      THydratedDocumentType extends AnyObject = HydratedDocument<
+        InferHydratedDocType<TSchemaDefinition, ResolveSchemaOptions<TSchemaOptions>>,
+        TSchemaOptions extends { methods: infer M } ? M : {},
+        TSchemaOptions extends { query: any } ? TSchemaOptions['query'] : {},
+        ResolveVirtuals<TSchemaOptions, RawDocType>,
+        RawDocType,
+        ResolveSchemaOptions<TSchemaOptions>
+      >
+    >(def: TSchemaDefinition): Schema<
+      RawDocType,
+      Model<RawDocType, any, any, any>,
+      TSchemaOptions extends { methods: infer M } ? M : {},
+      TSchemaOptions extends { query: any } ? TSchemaOptions['query'] : {},
+      ResolveVirtuals<TSchemaOptions, RawDocType>,
+      TSchemaOptions extends { statics: any } ? TSchemaOptions['statics'] : {},
+      TSchemaOptions,
+      ApplySchemaOptions<
+        ObtainDocumentType<any, RawDocType, ResolveSchemaOptions<TSchemaOptions>>,
+        ResolveSchemaOptions<TSchemaOptions>
+      >,
+      THydratedDocumentType,
+      TSchemaDefinition,
+      ApplySchemaOptions<
+        InferRawDocType<TSchemaDefinition, ResolveSchemaOptions<TSchemaOptions>, { bufferToBinary: true }>,
+        ResolveSchemaOptions<TSchemaOptions>
+      >
+    >;
+
+    static create<
+      TSchemaDefinition extends SchemaDefinition<undefined, RawDocType, any>,
+      TSchemaOptions extends SchemaOptions<InferRawDocType<TSchemaDefinition>>,
+      RawDocType extends ApplySchemaOptions<
+        InferRawDocType<TSchemaDefinition, ResolveSchemaOptions<TSchemaOptions>>,
+        ResolveSchemaOptions<TSchemaOptions>
+      >,
+      TMethods = TSchemaOptions extends { methods: infer M } ? { [K in keyof M]: OmitThisParameter<M[K]> } : {},
+      TStatics = TSchemaOptions extends { statics: infer S } ? { [K in keyof S]: OmitThisParameter<S[K]> } : {}
+    >(def: TSchemaDefinition, options: TSchemaOptions & {
+      statics?: SchemaOptionsStaticsPropertyType<
+        TStatics,
+        Model<RawDocType>
+      >
+    }): Schema<
+      RawDocType,
+      Model<RawDocType, any, any, any>,
+      TMethods,
+      TSchemaOptions extends { query: any } ? TSchemaOptions['query'] : {},
+      ResolveVirtuals<TSchemaOptions, RawDocType>,
+      TStatics,
+      TSchemaOptions,
+      ApplySchemaOptions<
+        ObtainDocumentType<any, RawDocType, ResolveSchemaOptions<TSchemaOptions>>,
+        ResolveSchemaOptions<TSchemaOptions>
+      >,
+      HydratedDocument<
+        InferHydratedDocType<TSchemaDefinition, ResolveSchemaOptions<TSchemaOptions>>,
+        TMethods,
+        TSchemaOptions extends { query: any } ? TSchemaOptions['query'] : {},
+        ResolveVirtuals<TSchemaOptions, RawDocType>,
+        RawDocType,
+        ResolveSchemaOptions<TSchemaOptions>
+      >,
+      TSchemaDefinition,
+      ApplySchemaOptions<
+        InferRawDocType<TSchemaDefinition, ResolveSchemaOptions<TSchemaOptions>, { bufferToBinary: true }>,
+        ResolveSchemaOptions<TSchemaOptions>
+      >
+    >;
+
+    /** Adds key path / schema type pairs to this schema. */
+    add(obj: SchemaDefinition<SchemaDefinitionType<RawDocType>, RawDocType> | Schema, prefix?: string): this;
+
+    /**
+     * Add an alias for `path`. This means getting or setting the `alias`
+     * is equivalent to getting or setting the `path`.
+     */
+    alias(path: string, alias: string | string[]): this;
+
+    /**
+     * Array of child schemas (from document arrays and single nested subdocs)
+     * and their corresponding compiled models. Each element of the array is
+     * an object with 2 properties: `schema` and `model`.
+     */
+    childSchemas: { schema: Schema, model: any }[];
+
+    /** Removes all indexes on this schema */
+    clearIndexes(): this;
+
+    /** Returns a copy of this schema */
+    clone(): this;
+
+    discriminator<DisSchema = Schema>(name: string | number, schema: DisSchema, options?: DiscriminatorOptions): this;
+
+    /** Returns a new schema that has the picked `paths` from this schema. */
+    pick<T = this>(paths: string[], options?: SchemaOptions): T;
+
+    /** Object containing discriminators defined on this schema */
+    discriminators?: { [name: string]: Schema };
+
+    /** Iterates the schemas paths similar to Array#forEach. */
+    eachPath(fn: (path: string, type: SchemaType) => void): this;
+
+    /** Defines an index (most likely compound) for this schema. */
+    index(fields: IndexDefinition, options?: Omit<IndexOptions, 'unique'> & { unique?: boolean | [true, string] }): this;
+
+    /**
+     * Define a search index for this schema.
+     *
+     * @remarks Search indexes are only supported when used against a 7.0+ Mongo Atlas cluster.
+     */
+    searchIndex(description: SearchIndexDescription): this;
+
+    /**
+     * Returns a list of indexes that this schema declares, via `schema.index()`
+     * or by `index: true` in a path's options.
+     */
+    indexes(): Array<[IndexDefinition, IndexOptions]>;
+
+    /** Gets a schema option. */
+    get<K extends keyof SchemaOptions>(key: K): SchemaOptions[K];
+
+    /**
+     * Loads an ES6 class into a schema. Maps [setters](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/set) + [getters](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/get), [static methods](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/static),
+     * and [instance methods](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes#Class_body_and_method_definitions)
+     * to schema [virtuals](http://mongoosejs.com/docs/guide.html#virtuals),
+     * [statics](http://mongoosejs.com/docs/guide.html#statics), and
+     * [methods](http://mongoosejs.com/docs/guide.html#methods).
+     */
+    loadClass(model: Function, onlyVirtuals?: boolean): this;
+
+    /** Adds an instance method to documents constructed from Models compiled from this schema. */
+    method<Context = THydratedDocumentType>(name: string, fn: (this: Context, ...args: any[]) => any, opts?: any): this;
+    method(obj: Partial<TInstanceMethods>): this;
+
+    /** Adds a query helper to this schema. */
+    queryHelper<Name extends string, Fn extends (this: QueryWithHelpers<any, DocType, TQueryHelpers, RawDocType>, ...args: any[]) => any>(
+      name: Name,
+      fn: Fn
+    ): Schema<
+      RawDocType,
+      TModelType,
+      TInstanceMethods,
+      TQueryHelpers & { [K in Name]: Fn },
+      TVirtuals,
+      TStaticMethods,
+      TSchemaOptions,
+      DocType,
+      THydratedDocumentType,
+      TSchemaDefinition,
+      LeanResultType
+    >;
+
+    /** Object of currently defined methods on this schema. */
+    methods: AddThisParameter<TInstanceMethods, THydratedDocumentType> & AnyObject;
+
+    /** The original object passed to the schema constructor */
+    obj: SchemaDefinition<SchemaDefinitionType<RawDocType>, RawDocType>;
+
+    /** Returns a new schema that has the `paths` from the original schema, minus the omitted ones. */
+    omit<T = this>(paths: string[], options?: SchemaOptions): T;
+
+    options: SchemaOptions;
+
+    /** Gets/sets schema paths. */
+    path<ResultType extends SchemaType = SchemaType<any, THydratedDocumentType>>(path: string): ResultType;
+    path<pathGeneric extends keyof RawDocType>(path: pathGeneric): SchemaType<RawDocType[pathGeneric]>;
+    path(path: string, constructor: any): this;
+
+    /** Lists all paths and their type in the schema. */
+    paths: {
+      [key: string]: SchemaType;
+    };
+
+    /** Returns the pathType of `path` for this schema. */
+    pathType(path: string): string;
+
+    /** Registers a plugin for this schema. */
+    plugin<PFunc extends PluginFunction<DocType, TModelType, any, any, any, any>, POptions extends Parameters<PFunc>[1] = Parameters<PFunc>[1]>(fn: PFunc, opts?: POptions): this;
+    plugin<PFunc extends PluginFunction<DocType, Model<DocType, any, any, any, any, any>, any, any, any, any>, POptions extends Parameters<PFunc>[1] = Parameters<PFunc>[1]>(fn: PFunc, opts?: POptions): this;
+
+    /** Defines a post hook for the model. */
+
+    // PostMiddlewareFunction
+    // with errorHandler set to true
+    post<T = Query<any, any>>(method: MongooseQueryMiddleware | MongooseQueryMiddleware[] | RegExp, options: SchemaPostOptions & { errorHandler: true }, fn: ErrorHandlingMiddlewareWithOption<T>): this;
+    post<T = THydratedDocumentType>(method: MongooseDocumentMiddleware | MongooseDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { errorHandler: true }, fn: ErrorHandlingMiddlewareWithOption<T>): this;
+    post<T extends Aggregate<any>>(method: 'aggregate' | RegExp, options: SchemaPostOptions & { errorHandler: true }, fn: ErrorHandlingMiddlewareWithOption<T, Array<any>>): this;
+    post(method: 'insertMany' | RegExp, options: SchemaPostOptions & { errorHandler: true }, fn: ErrorHandlingMiddlewareWithOption<TModelType>): this;
+
+    // this = never since it never happens
+    post<T = never>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: false, query: false }, fn: PostMiddlewareFunction<never, never>): this;
+    post<T = never>(method: MongooseDistinctQueryMiddleware|MongooseDistinctQueryMiddleware[], options: SchemaPostOptions & { document: boolean, query: false }, fn: PostMiddlewareFunction<T, QueryResultType<T>>): this;
+    post<T = never>(method: MongooseDistinctDocumentMiddleware | MongooseDistinctDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: false, query: true }, fn: PostMiddlewareFunction<T, T>): this;
+    // this = Document
+    post<T = THydratedDocumentType>(method: MongooseDistinctDocumentMiddleware|MongooseDistinctDocumentMiddleware[], fn: PostMiddlewareFunction<T, T>): this;
+    post<T = THydratedDocumentType>(method: MongooseDistinctDocumentMiddleware|MongooseDistinctDocumentMiddleware[], options: SchemaPostOptions & SchemaPostOptions, fn: PostMiddlewareFunction<T, T>): this;
+    post<T = THydratedDocumentType>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: true, query: false }, fn: PostMiddlewareFunction<T, T>): this;
+    post<T = THydratedDocumentType>(method: 'init', fn: PostMiddlewareFunction<T, T>): this;
+
+    // this = Query
+    post<T = Query<any, any>>(method: MongooseRawResultQueryMiddleware|MongooseRawResultQueryMiddleware[], fn: PostMiddlewareFunction<T, null | QueryResultType<T> | ModifyResult<QueryResultType<T>>>): this;
+    post<T = Query<any, any>>(method: MongooseDefaultQueryMiddleware|MongooseDefaultQueryMiddleware[], fn: PostMiddlewareFunction<T, QueryResultType<T>>): this;
+    post<T = Query<any, any>>(method: MongooseDistinctQueryMiddleware|MongooseDistinctQueryMiddleware[], options: SchemaPostOptions, fn: PostMiddlewareFunction<T, QueryResultType<T>>): this;
+    post<T = Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: false, query: true }, fn: PostMiddlewareFunction<T, QueryResultType<T>>): this;
+    // this = Union of Document and Query, could be called with any of them
+    post<T = THydratedDocumentType|Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: true, query: true }, fn: PostMiddlewareFunction<T, T|QueryResultType<T>>): this;
+    post<T = THydratedDocumentType|Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, fn: PostMiddlewareFunction<T, T|QueryResultType<T>>): this;
+
+    // ErrorHandlingMiddlewareFunction
+    // this = never since it never happens
+    post<T = never>(method: MongooseDistinctQueryMiddleware|MongooseDistinctQueryMiddleware[], options: SchemaPostOptions & { document: boolean, query: false }, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    post<T = never>(method: MongooseDistinctDocumentMiddleware|MongooseDistinctDocumentMiddleware[], options: SchemaPostOptions & { document: false, query: boolean }, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    post<T = never>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: false, query: false }, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    // this = Document
+    post<T = THydratedDocumentType>(method: MongooseDistinctDocumentMiddleware|MongooseDistinctDocumentMiddleware[], fn: ErrorHandlingMiddlewareFunction<T>): this;
+    post<T = THydratedDocumentType>(method: MongooseDistinctDocumentMiddleware|MongooseDistinctDocumentMiddleware[], options: SchemaPostOptions, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    post<T = THydratedDocumentType>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: true, query: false }, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    // this = Query
+    post<T = Query<any, any>>(method: MongooseDefaultQueryMiddleware|MongooseDefaultQueryMiddleware[], fn: ErrorHandlingMiddlewareFunction<T>): this;
+    post<T = Query<any, any>>(method: MongooseDistinctQueryMiddleware|MongooseDistinctQueryMiddleware[], options: SchemaPostOptions, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    post<T = Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: false, query: true }, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    // this = Union of Document and Query, could be called with any of them
+    post<T = THydratedDocumentType|Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPostOptions & { document: true, query: true }, fn: ErrorHandlingMiddlewareFunction<T>): this;
+    post<T = THydratedDocumentType|Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, fn: ErrorHandlingMiddlewareFunction<T>): this;
+
+    // method aggregate and insertMany with PostMiddlewareFunction
+    post<T extends Aggregate<any>>(method: 'aggregate' | RegExp, fn: PostMiddlewareFunction<T, Array<AggregateExtract<T>>>): this;
+    post<T extends Aggregate<any>>(method: 'aggregate' | RegExp, options: SchemaPostOptions, fn: PostMiddlewareFunction<T, Array<AggregateExtract<T>>>): this;
+    post(method: 'insertMany' | RegExp, fn: PostMiddlewareFunction<TModelType, TModelType>): this;
+    post(method: 'insertMany' | RegExp, options: SchemaPostOptions, fn: PostMiddlewareFunction<TModelType, TModelType>): this;
+
+    // method aggregate and insertMany with ErrorHandlingMiddlewareFunction
+    post<T extends Aggregate<any>>(method: 'aggregate' | RegExp, fn: ErrorHandlingMiddlewareFunction<T, Array<any>>): this;
+    post<T extends Aggregate<any>>(method: 'aggregate' | RegExp, options: SchemaPostOptions, fn: ErrorHandlingMiddlewareFunction<T, Array<any>>): this;
+    post(method: 'bulkWrite' | 'createCollection' | 'insertMany' | RegExp, fn: ErrorHandlingMiddlewareFunction<TModelType>): this;
+    post(method: 'bulkWrite' | 'createCollection' | 'insertMany' | RegExp, options: SchemaPostOptions, fn: ErrorHandlingMiddlewareFunction<TModelType>): this;
+
+    /** Defines a pre hook for the model. */
+    // this = never since it never happens
+    pre<T = never>(method: 'save', options: SchemaPreOptions & { document: false, query: boolean }, fn: PreSaveMiddlewareFunction<T>): this;
+    pre<T = never>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPreOptions & { document: false, query: false }, fn: PreMiddlewareFunction<T>): this;
+    pre<T = never>(method: MongooseDistinctQueryMiddleware|MongooseDistinctQueryMiddleware[], options: SchemaPreOptions & { document: boolean, query: false }, fn: PreMiddlewareFunction<T>): this;
+    pre<T = never>(method: MongooseDistinctDocumentMiddleware | MongooseDistinctDocumentMiddleware[] | RegExp, options: SchemaPreOptions & { document: false, query: boolean }, fn: PreMiddlewareFunction<T>): this;
+    // this = Union of Document and Query, could be called with any of them
+    pre<T = THydratedDocumentType | Query<any, any>>(
+      method: 'updateOne' | RegExp,
+      options: SchemaPreOptions & { document: true, query: true },
+      fn: PreUpdateOneMiddlewareFunction<T>
+    ): this;
+    pre<T = THydratedDocumentType | Query<any, any>>(
+      method: 'deleteOne' | RegExp,
+      options: SchemaPreOptions & { document: true, query: true },
+      fn: PreDeleteOneMiddlewareFunction<T>
+    ): this;
+    // this = Document
+    pre<T = THydratedDocumentType>(method: 'save', fn: PreSaveMiddlewareFunction<T>): this;
+    pre<T = THydratedDocumentType, U = RawDocType>(method: 'init', fn: (this: T, doc: U) => void): this;
+    pre<T = THydratedDocumentType>(method: MongooseDistinctDocumentMiddleware|MongooseDistinctDocumentMiddleware[], fn: PreMiddlewareFunction<T>): this;
+    pre<T = THydratedDocumentType>(method: MongooseDistinctDocumentMiddleware|MongooseDistinctDocumentMiddleware[], options: SchemaPreOptions, fn: PreMiddlewareFunction<T>): this;
+    pre<T = THydratedDocumentType>(
+      method: 'updateOne' | RegExp,
+      options: SchemaPreOptions & { document: true },
+      fn: PreUpdateOneMiddlewareFunction<T>
+    ): this;
+    pre<T = THydratedDocumentType>(
+      method: 'deleteOne' | RegExp,
+      options: SchemaPreOptions & { document: true },
+      fn: PreDeleteOneMiddlewareFunction<T>
+    ): this;
+    pre<T = THydratedDocumentType>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPreOptions & { document: true, query: false }, fn: PreMiddlewareFunction<T>): this;
+    // this = Query
+    pre<T = Query<any, any>>(method: MongooseDefaultQueryMiddleware|MongooseDefaultQueryMiddleware[], fn: PreMiddlewareFunction<T>): this;
+    pre<T = Query<any, any>>(method: MongooseDistinctQueryMiddleware|MongooseDistinctQueryMiddleware[], options: SchemaPreOptions, fn: PreMiddlewareFunction<T>): this;
+    pre<T = Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPreOptions & { document: false, query: true }, fn: PreMiddlewareFunction<T>): this;
+    // this = Union of Document and Query, could be called with any of them
+    pre<T = THydratedDocumentType|Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, options: SchemaPreOptions & { document: true, query: true }, fn: PreMiddlewareFunction<T>): this;
+    pre<T = THydratedDocumentType|Query<any, any>>(method: MongooseQueryOrDocumentMiddleware | MongooseQueryOrDocumentMiddleware[] | RegExp, fn: PreMiddlewareFunction<T>): this;
+    // method aggregate
+    pre<T extends Aggregate<any>>(method: 'aggregate' | RegExp, fn: PreMiddlewareFunction<T>): this;
+    /* method insertMany */
+    pre(
+      method: 'insertMany' | RegExp,
+      fn: (
+        this: TModelType,
+        docs: any | Array<any>,
+        options?: InsertManyOptions & { lean?: boolean }
+      ) => void | Promise<void>
+    ): this;
+    /* method bulkWrite */
+    pre(
+      method: 'bulkWrite' | RegExp,
+      fn: (
+        this: TModelType,
+        ops: Array<AnyBulkWriteOperation<any>>,
+        options?: mongodb.BulkWriteOptions & MongooseBulkWriteOptions
+      ) => void | Promise<void>
+    ): this;
+    /* method createCollection */
+    pre(
+      method: 'createCollection' | RegExp,
+      fn: (
+        this: TModelType,
+        options?: mongodb.CreateCollectionOptions & Pick<SchemaOptions, 'expires'>
+      ) => void | Promise<void>
+    ): this;
+
+    /** Object of currently defined query helpers on this schema. */
+    query: TQueryHelpers;
+
+    /** Adds a method call to the queue. */
+    queue(name: string, args: any[]): this;
+
+    /** Removes the given `path` (or [`paths`]). */
+    remove(paths: string | Array<string>): this;
+
+    /** Removes index by name or index spec */
+    removeIndex(index: string | AnyObject): this;
+
+    /** Removes the given virtual or virtuals from this schema. Throws if a virtual does not exist. */
+    removeVirtual(path: string | string[]): this;
+
+    /** Returns an Array of path strings that are required by this schema. */
+    requiredPaths(invalidate?: boolean): string[];
+
+    /** Sets a schema option. */
+    set<K extends keyof SchemaOptions>(key: K, value: SchemaOptions<DocType>[K], _tags?: any): this;
+
+    /** Adds static "class" methods to Models compiled from this schema. */
+    static<K extends keyof TStaticMethods>(name: K, fn: TStaticMethods[K]): this;
+    static<Fns extends Partial<TStaticMethods> & { [name: string]: (this: TModelType, ...args: any[]) => any }>(
+      obj: Fns
+    ): Schema<
+      RawDocType,
+      TModelType,
+      TInstanceMethods,
+      TQueryHelpers,
+      TVirtuals,
+      TStaticMethods & Fns,
+      TSchemaOptions,
+      DocType,
+      THydratedDocumentType,
+      TSchemaDefinition,
+      LeanResultType
+    >;
+    static<Name extends string, Fn extends (this: TModelType, ...args: any[]) => any>(
+      name: Name,
+      fn: Fn
+    ): Schema<
+      RawDocType,
+      TModelType,
+      TInstanceMethods,
+      TQueryHelpers,
+      TVirtuals,
+      TStaticMethods & { [K in Name]: Fn },
+      TSchemaOptions,
+      DocType,
+      THydratedDocumentType,
+      TSchemaDefinition,
+      LeanResultType
+    >;
+
+    /** Object of currently defined statics on this schema. */
+    statics: { [F in keyof TStaticMethods]: TStaticMethods[F] } &
+    { [name: string]: ((this: TModelType, ...args: any[]) => unknown) & SupportsMiddlewareOption };
+
+    toJSONSchema(options?: { useBsonType?: boolean }): Record<string, any>;
+
+    /** Creates a virtual type with the given name. */
+    virtual<T = THydratedDocumentType>(
+      name: keyof TVirtuals | string,
+      options?: VirtualTypeOptions<T, DocType>
+    ): VirtualType<T>;
+
+    /** Object of currently defined virtuals on this schema */
+    virtuals: TVirtuals;
+
+    /** Returns the virtual type with the given `name`. */
+    virtualpath(name: string): VirtualType<THydratedDocumentType> | null;
+
+    static ObjectId: typeof Schema.Types.ObjectId;
+  }
+
+  export type NumberSchemaDefinition = typeof Number | 'number' | 'Number' | typeof Schema.Types.Number | Schema.Types.Number | 'int32' | 'Int32' | typeof Schema.Types.Int32 | Schema.Types.Int32;
+  export type StringSchemaDefinition = typeof String | 'string' | 'String' | typeof Schema.Types.String | Schema.Types.String;
+  export type BooleanSchemaDefinition = typeof Boolean | 'boolean' | 'Boolean' | typeof Schema.Types.Boolean | Schema.Types.Boolean;
+  export type DateSchemaDefinition = DateConstructor | 'date' | 'Date' | typeof Schema.Types.Date | Schema.Types.Date;
+  export type ObjectIdSchemaDefinition = 'ObjectId' | 'ObjectID' | typeof Schema.Types.ObjectId | Schema.Types.ObjectId | Types.ObjectId | typeof Types.ObjectId;
+  export type BufferSchemaDefinition = typeof Buffer | 'buffer' | 'Buffer' | typeof Schema.Types.Buffer;
+  export type Decimal128SchemaDefinition = 'decimal128' | 'Decimal128' | typeof Schema.Types.Decimal128 | Schema.Types.Decimal128 | Types.Decimal128;
+  export type BigintSchemaDefinition = 'bigint' | 'BigInt' | typeof Schema.Types.BigInt | Schema.Types.BigInt | typeof BigInt | BigInt;
+  export type UuidSchemaDefinition = 'uuid' | 'UUID' | typeof Schema.Types.UUID | Schema.Types.UUID;
+  export type MapSchemaDefinition = MapConstructor | 'Map' | typeof Schema.Types.Map;
+  export type UnionSchemaDefinition = 'Union' | 'union' | typeof Schema.Types.Union | Schema.Types.Union;
+  export type DoubleSchemaDefinition = 'double' | 'Double' | typeof Schema.Types.Double | Schema.Types.Double;
+
+  export type SchemaDefinitionWithBuiltInClass<T> = T extends number
+    ? NumberSchemaDefinition
+    : T extends string
+      ? StringSchemaDefinition
+      : T extends boolean
+        ? BooleanSchemaDefinition
+        : T extends NativeDate
+          ? DateSchemaDefinition
+          : (Function | string);
+
+  export type SchemaDefinitionProperty<T = undefined, EnforcedDocType = any, THydratedDocumentType = HydratedDocument<EnforcedDocType>> =
+    // ThisType intersection here avoids corrupting ThisType for SchemaTypeOptions (see test gh11828)
+    | SchemaDefinitionWithBuiltInClass<T> & ThisType<THydratedDocumentType>
+    | SchemaTypeOptions<T extends undefined ? any : T, EnforcedDocType, THydratedDocumentType>
+    | typeof SchemaType
+    | Schema<any, any, any>
+    | Schema<any, any, any>[]
+    | SchemaTypeOptions<T extends undefined ? any : Unpacked<T>, EnforcedDocType, THydratedDocumentType>[]
+    | Function[]
+    | SchemaDefinition<T, EnforcedDocType, THydratedDocumentType>
+    | SchemaDefinition<Unpacked<T>, EnforcedDocType, THydratedDocumentType>[]
+    | typeof Schema.Types.Mixed
+    | MixedSchemaTypeOptions<EnforcedDocType, THydratedDocumentType>;
+
+  export type SchemaDefinition<T = undefined, EnforcedDocType = any, THydratedDocumentType = HydratedDocument<EnforcedDocType>> = T extends undefined
+    ? { [path: string]: SchemaDefinitionProperty; }
+    : { [path in keyof T]?: SchemaDefinitionProperty<T[path], EnforcedDocType, THydratedDocumentType>; };
+
+  export type AnyArray<T> = T[] | ReadonlyArray<T>;
+  export type ExtractMongooseArray<T> = T extends Types.Array<any> ? AnyArray<Unpacked<T>> : T;
+
+  export interface MixedSchemaTypeOptions<EnforcedDocType, THydratedDocumentType> extends SchemaTypeOptions<Schema.Types.Mixed, EnforcedDocType, THydratedDocumentType> {
+    type: typeof Schema.Types.Mixed;
+  }
+
+  export type RefType =
+    | number
+    | string
+    | Buffer
+    | undefined
+    | Types.ObjectId
+    | Types.Buffer
+    | typeof Schema.Types.Number
+    | typeof Schema.Types.String
+    | typeof Schema.Types.Buffer
+    | typeof Schema.Types.ObjectId
+    | typeof Schema.Types.UUID;
+
+
+  export type InferId<T> = mongodb.InferIdType<T>;
+
+  export interface VirtualTypeOptions<HydratedDocType = Document, DocType = unknown> {
+    /** If `ref` is not nullish, this becomes a populated virtual. */
+    ref?: string | Function;
+
+    /** The local field to populate on if this is a populated virtual. */
+    localField?: string | ((this: HydratedDocType, doc: HydratedDocType) => string);
+
+    /** The foreign field to populate on if this is a populated virtual. */
+    foreignField?: string | ((this: HydratedDocType, doc: HydratedDocType) => string);
+
+    /**
+     * By default, a populated virtual is an array. If you set `justOne`,
+     * the populated virtual will be a single doc or `null`.
+     */
+    justOne?: boolean;
+
+    /** If you set this to `true`, Mongoose will call any custom getters you defined on this virtual. */
+    getters?: boolean;
+
+    /**
+     * If you set this to `true`, `populate()` will set this virtual to the number of populated
+     * documents, as opposed to the documents themselves, using `Query#countDocuments()`.
+     */
+    count?: boolean;
+
+    /** Add an extra match condition to `populate()`. */
+    match?: QueryFilter<any> | ((doc: Record<string, any>, virtual?: this) => Record<string, any> | null);
+
+    /** Add a default `limit` to the `populate()` query. */
+    limit?: number;
+
+    /** Add a default `skip` to the `populate()` query. */
+    skip?: number;
+
+    /**
+     * For legacy reasons, `limit` with `populate()` may give incorrect results because it only
+     * executes a single query for every document being populated. If you set `perDocumentLimit`,
+     * Mongoose will ensure correct `limit` per document by executing a separate query for each
+     * document to `populate()`. For example, `.find().populate({ path: 'test', perDocumentLimit: 2 })`
+     * will execute 2 additional queries if `.find()` returns 2 documents.
+     */
+    perDocumentLimit?: number;
+
+    /** Additional options like `limit` and `lean`. */
+    options?: QueryOptions<DocType> & { match?: AnyObject };
+
+    /** If true and the given `name` is a direct child of an array, apply the virtual to the array rather than the elements. */
+    applyToArray?: boolean;
+
+    /** Additional options for plugins */
+    [extra: string]: any;
+  }
+
+  export class VirtualType<HydratedDocType> {
+    /** Applies getters to `value`. */
+    applyGetters(value: any, doc: Document): any;
+
+    /** Applies setters to `value`. */
+    applySetters(value: any, doc: Document): any;
+
+    /** Adds a custom getter to this virtual. */
+    get<T = HydratedDocType>(fn: (this: T, value: any, virtualType: VirtualType<T>, doc: T) => any): this;
+
+    /** Adds a custom setter to this virtual. */
+    set<T = HydratedDocType>(fn: (this: T, value: any, virtualType: VirtualType<T>, doc: T) => void): this;
+  }
+
+  export type ReturnsNewDoc = { new: true } | { returnOriginal: false } | { returnDocument: 'after' };
+
+  export type ArrayProjectionOperators = { $slice: number | [number, number]; $elemMatch?: never } | { $elemMatch: Record<string, any>; $slice?: never };
+  export type ProjectionOperators = { $meta: string };
+  /**
+   * This Type Assigns `Element | undefined` recursively to the `T` type.
+   * if it is an array it will do this to the element of the array, if it is an object it will do this for the properties of the object.
+   * `Element` is the truthy or falsy values that are going to be used as the value of the projection.(1 | true or 0 | false)
+   * For the elements of the array we will use: `Element | `undefined` | `ArrayProjectionOperators`
+   * @example
+   * type CalculatedType = Projector<{ a: string, b: number, c: { d: string }, d: string[] }, true>
+   * type CalculatedType = {
+        a?: true | undefined;
+        b?: true | undefined;
+        c?: true | {
+            d?: true | undefined;
+        } | undefined;
+        d?: true | ArrayProjectionOperators | undefined;
+    }
+  */
+  export type Projector<T, Element> = T extends Array<infer U>
+    ? Projector<U, Element> | ArrayProjectionOperators | ProjectionOperators
+    : T extends TreatAsPrimitives
+      ? Element | ProjectionOperators
+      : T extends Record<string, any>
+        ? {
+          [K in keyof T]?: T[K] extends Record<string, any> ? Projector<T[K], Element> | Element | ProjectionOperators : Element | ProjectionOperators;
+        }
+        : Element | ProjectionOperators;
+  type _IDType = { _id?: boolean | number };
+  export type InclusionProjection<T> = IsItRecordAndNotAny<T> extends true
+    ? Omit<Projector<WithLevel1NestedPaths<T>, boolean | number>, '_id'> & _IDType
+    : AnyObject;
+  export type ExclusionProjection<T> = IsItRecordAndNotAny<T> extends true
+    ? Omit<Projector<WithLevel1NestedPaths<T>, false | 0>, '_id'> & _IDType
+    : AnyObject;
+
+  export type ProjectionType<T> = (InclusionProjection<T> & AnyObject)
+    | (ExclusionProjection<T> & AnyObject)
+    | string;
+  export type SortValues = SortOrder;
+
+  export type SortOrder = -1 | 1 | 'asc' | 'ascending' | 'desc' | 'descending';
+
+  type _UpdateQuery<TSchema, AdditionalProperties = AnyObject> = {
+    /** @see https://www.mongodb.com/docs/manual/reference/operator/update-field/ */
+    $currentDate?: AnyKeys<TSchema> & AdditionalProperties;
+    $inc?: AnyKeys<TSchema> & AdditionalProperties;
+    $min?: AnyKeys<TSchema> & AdditionalProperties;
+    $max?: AnyKeys<TSchema> & AdditionalProperties;
+    $mul?: AnyKeys<TSchema> & AdditionalProperties;
+    $rename?: Record<string, string>;
+    $set?: AnyKeys<TSchema> & AdditionalProperties;
+    $setOnInsert?: AnyKeys<TSchema> & AdditionalProperties;
+    $unset?: AnyKeys<TSchema> & AdditionalProperties;
+
+    /** @see https://www.mongodb.com/docs/manual/reference/operator/update-array/ */
+    $addToSet?: AnyKeys<TSchema> & AdditionalProperties;
+    $pop?: AnyKeys<TSchema> & AdditionalProperties;
+    $pull?: AnyKeys<TSchema> & AdditionalProperties;
+    $push?: AnyKeys<TSchema> & AdditionalProperties;
+    $pullAll?: AnyKeys<TSchema> & AdditionalProperties;
+
+    /** @see https://www.mongodb.com/docs/manual/reference/operator/update-bitwise/ */
+    $bit?: AnyKeys<TSchema>;
+  };
+
+  export type UpdateWithAggregationPipeline = UpdateAggregationStage[];
+  export type UpdateAggregationStage = { $addFields: any } |
+  { $set: any } |
+  { $project: any } |
+  { $unset: any } |
+  { $replaceRoot: any } |
+  { $replaceWith: any };
+
+  /**
+   * Update query command to perform on the document
+   * @example
+   * ```js
+   * { age: 30 }
+   * ```
+   */
+  export type UpdateQuery<T> = AnyKeys<T> & _UpdateQuery<T> & AnyObject;
+
+  /**
+   * A more strict form of UpdateQuery that enforces updating only
+   * known top-level properties.
+   * @example
+   * ```ts
+   * function updateUser(_id: mongoose.Types.ObjectId, update: UpdateQueryKnownOnly<IUser>) {
+   *   return User.updateOne({ _id }, update);
+   * }
+   * ```
+   */
+  export type UpdateQueryKnownOnly<T> = _UpdateQuery<T, {}>;
+
+  export type FlattenMaps<T> = {
+    [K in keyof T]: FlattenProperty<T[K]>;
+  };
+
+  export type BufferToBinaryProperty<T> = unknown extends Buffer
+    ? T
+    : T extends Buffer
+      ? mongodb.Binary
+      : T extends Types.DocumentArray<infer ItemType>
+        ? Types.DocumentArray<BufferToBinary<ItemType>>
+        : T extends Types.Subdocument<unknown, unknown, infer SubdocType>
+          ? HydratedSingleSubdocument<BufferToBinary<SubdocType>>
+          : BufferToBinary<T>;
+
+  /**
+   * Converts any Buffer properties into mongodb.Binary instances, which is what `lean()` returns
+   */
+   export type BufferToBinary<T> = unknown extends Buffer
+     ? T
+     : T extends Buffer
+       ? mongodb.Binary
+       : T extends Document
+         ? T
+         : T extends TreatAsPrimitives
+           ? T
+           : T extends Record<string, any>
+             ? {
+                 [K in keyof T]: BufferToBinaryProperty<T[K]>
+               }
+             : T;
+
+  /**
+  * Converts any Buffer properties into { type: 'buffer', data: [1, 2, 3] } format for JSON serialization
+  */
+  export type BufferToJSON<T> = unknown extends Buffer
+    ? T
+    : T extends Buffer
+      ? { type: 'buffer', data: number[] }
+      : T extends Document
+        ? T
+        : T extends TreatAsPrimitives
+          ? T
+          : T extends Record<string, any> ? {
+            [K in keyof T]: T[K] extends Buffer
+              ? { type: 'buffer', data: number[] }
+              : T[K] extends Types.DocumentArray<infer ItemType>
+                  ? Types.DocumentArray<BufferToBinary<ItemType>>
+                  : T[K] extends Types.Subdocument<unknown, unknown, infer SubdocType>
+                    ? HydratedSingleSubdocument<SubdocType>
+                    : BufferToBinary<T[K]>;
+          } : T;
+
+  /**
+   * Converts any UUID properties into strings for JSON serialization
+   */
+  export type UUIDToString<T> = T extends Types.UUID
+    ? string
+    : T extends mongodb.UUID
+      ? string
+      : T extends Document
+        ? T
+        : T extends TreatAsPrimitives
+          ? T
+          : T extends Record<string, any> ? {
+            [K in keyof T]: T[K] extends Types.UUID
+              ? string
+              : T[K] extends mongodb.UUID
+                ? string
+                : T[K] extends Types.DocumentArray<infer ItemType>
+                    ? Types.DocumentArray<UUIDToString<ItemType>>
+                    : T[K] extends Types.Subdocument<unknown, unknown, infer SubdocType>
+                      ? HydratedSingleSubdocument<UUIDToString<SubdocType>>
+                      : UUIDToString<T[K]>;
+          } : T;
+
+  /**
+   * Alias for UUIDToString for backwards compatibility.
+   * @deprecated Use UUIDToString instead.
+   */
+  export type UUIDToJSON<T> = UUIDToString<T>;
+
+  /**
+   * Converts any ObjectId properties into strings for JSON serialization
+   */
+  export type ObjectIdToString<T> = T extends mongodb.ObjectId
+    ? string
+    : T extends Document
+      ? T
+      : T extends TreatAsPrimitives
+        ? T
+        : T extends Record<string, any> ? {
+          [K in keyof T]: T[K] extends mongodb.ObjectId
+            ? string
+            : T[K] extends Types.DocumentArray<infer ItemType>
+                ? Types.DocumentArray<ObjectIdToString<ItemType>>
+                : T[K] extends Types.Subdocument<unknown, unknown, infer SubdocType>
+                  ? HydratedSingleSubdocument<ObjectIdToString<SubdocType>>
+                  : ObjectIdToString<T[K]>;
+        } : T;
+
+  /**
+   * Converts any Date properties into strings for JSON serialization
+   */
+  export type DateToString<T> = T extends NativeDate
+    ? string
+    : T extends Document
+      ? T
+        : T extends TreatAsPrimitives
+        ? T
+        : T extends Record<string, any> ? {
+          [K in keyof T]: T[K] extends NativeDate
+            ? string
+            : T[K] extends (NativeDate | null | undefined)
+              ? string | null | undefined
+              : T[K] extends Types.DocumentArray<infer ItemType>
+                  ? Types.DocumentArray<DateToString<ItemType>>
+                  : T[K] extends Types.Subdocument<unknown, unknown, infer SubdocType>
+                    ? HydratedSingleSubdocument<DateToString<SubdocType>>
+                    : DateToString<T[K]>;
+        } : T;
+
+  /**
+   * Converts any Mongoose subdocuments (single nested or doc arrays) into POJO equivalents
+   */
+  export type SubdocsToPOJOs<T> = T extends Document
+    ? T
+    : T extends TreatAsPrimitives
+      ? T
+      : T extends Record<string, any> ? {
+        [K in keyof T]: T[K] extends Types.DocumentArray<infer ItemType>
+          ? ItemType[]
+          : T[K] extends Types.Subdocument<unknown, unknown, infer SubdocType>
+            ? SubdocType
+            : SubdocsToPOJOs<T[K]>;
+      } : T;
+
+  export type JSONSerialized<T> = SubdocsToPOJOs<
+    FlattenMaps<
+      BufferToJSON<
+        ObjectIdToString<
+          UUIDToJSON<
+            DateToString<T>
+          >
+        >
+      >
+    >
+  >;
+
+  /**
+   * Helper types for computing toObject/toJSON return types based on options.
+   * These compose transforms conditionally to avoid combinatorial explosion of overloads.
+   */
+  type ApplyVirtuals<T, TVirtuals, O> =
+    O extends { virtuals: true } ? T & TVirtuals : T;
+
+  type GetVersionKeyName<TSchemaOptions> =
+    TSchemaOptions extends { versionKey: infer VK }
+      ? VK extends string ? VK : '__v'
+      : '__v';
+
+  type ApplyVersionKey<T, O, TSchemaOptions = {}> =
+    O extends { versionKey: false } ? Omit<T, GetVersionKeyName<TSchemaOptions>> : T;
+
+  /**
+   * Single-pass type that applies all flatten transforms (flattenMaps, flattenObjectIds, flattenUUIDs)
+   * in one recursive traversal. This avoids TypeScript's "union type too complex" error that occurs
+   * when nesting separate recursive transform types.
+   *
+   * By handling all transforms in one pass, we correctly handle ObjectIds/UUIDs nested inside Maps
+   * since we recurse into Map values during the same traversal that converts ObjectIds/UUIDs.
+   */
+  type ApplyFlattenTransforms<T, O> =
+    // Handle ObjectId first (before TreatAsPrimitives since ObjectId is in TreatAsPrimitives)
+    T extends mongodb.ObjectId
+      ? O extends { flattenObjectIds: true } ? string : T
+    // Handle UUID (both Types.UUID and mongodb.UUID)
+    : T extends Types.UUID
+      ? O extends { flattenUUIDs: true } ? string : T
+    : T extends mongodb.UUID
+      ? O extends { flattenUUIDs: true } ? string : T
+    // Handle Map - flatten to Record and recurse into values
+    : T extends Map<any, infer V>
+      ? O extends { flattenMaps: true }
+        ? Record<string, ApplyFlattenTransforms<V, O>>
+        : T
+    // Don't recurse into Documents
+    : T extends Document
+      ? T
+    // Don't modify primitives
+    : T extends TreatAsPrimitives
+      ? T
+    // Handle DocumentArray - recurse into items
+    : T extends Types.DocumentArray<infer ItemType>
+      ? Types.DocumentArray<ApplyFlattenTransforms<ItemType, O>>
+    // Handle plain arrays - recurse into items
+    : T extends Array<infer ItemType>
+      ? ApplyFlattenTransforms<ItemType, O>[]
+    // Handle Subdocument - recurse into subdoc type
+    : T extends Types.Subdocument<unknown, unknown, infer SubdocType>
+      ? HydratedSingleSubdocument<ApplyFlattenTransforms<SubdocType, O>>
+    // Handle regular objects - recurse into properties
+    : T extends Record<string, any>
+      ? { [K in keyof T]: ApplyFlattenTransforms<T[K], O> }
+    : T;
+
+  /**
+   * Extracts the `toObject` or `toJSON` options declared in the schema options.
+   * The runtime applies these as defaults when the corresponding method is
+   * called without arguments.
+   */
+  export type SchemaDeclaredToObjectOptions<TSchemaOptions, Key extends 'toObject' | 'toJSON'> =
+    Key extends keyof TSchemaOptions
+      ? NonNullable<TSchemaOptions[Key]> extends infer O extends ToObjectOptions
+        ? O
+        : {}
+      : {};
+
+  /**
+   * Computes the return type of toObject/toJSON when called without arguments,
+   * applying the options declared in the schema like the runtime does. When the
+   * schema declares no options for the method, the plain document shape is
+   * returned without running it through the option transforms.
+   */
+  export type DefaultToObjectReturnType<DocType, TVirtuals, TSchemaOptions, Key extends 'toObject' | 'toJSON'> =
+    SchemaDeclaredToObjectOptions<TSchemaOptions, Key> extends infer O extends ToObjectOptions
+      ? keyof O extends never
+        ? Default__v<Require_id<DocType>, TSchemaOptions>
+        : ToObjectReturnType<DocType, TVirtuals, O, TSchemaOptions>
+      : Default__v<Require_id<DocType>, TSchemaOptions>;
+
+  /**
+   * Computes the return type of toObject/toJSON based on the provided options.
+   * Uses a single-pass transform for flatten operations to correctly handle all combinations.
+   */
+  export type ToObjectReturnType<DocType, TVirtuals, O extends ToObjectOptions, TSchemaOptions = {}> =
+    ApplyVersionKey<
+      Default__v<
+        ApplyFlattenTransforms<
+          ApplyVirtuals<Require_id<DocType>, TVirtuals, O>,
+          O
+        >,
+        TSchemaOptions
+      >,
+      O,
+      TSchemaOptions
+    >;
+
+  /**
+   * Separate type is needed for properties of union type (for example, Types.DocumentArray | undefined) to apply conditional check to each member of it
+   * https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+   */
+  type FlattenProperty<T> = T extends Map<any, infer V>
+      ? Record<string, V> : T extends TreatAsPrimitives
+      ? T : T extends Document ? T : T extends Types.DocumentArray<infer ItemType>
+        ? Types.DocumentArray<FlattenMaps<ItemType>> : FlattenMaps<T>;
+
+  export type actualPrimitives = string | boolean | number | bigint | symbol | null | undefined;
+  export type TreatAsPrimitives = actualPrimitives | NativeDate | RegExp | symbol | Error | BigInt | Types.ObjectId | Buffer | Function | mongodb.Binary | mongodb.ClientSession;
+
+  export type SchemaDefinitionType<T> = T extends Document ? Omit<T, Exclude<keyof Document, '_id' | 'id' | '__v'>> : T;
+
+  /* for ts-mongoose */
+  export class mquery { }
+
+  export function overwriteMiddlewareResult(val: any): Kareem.OverwriteResult;
+
+  export function skipMiddlewareFunction(val: any): Kareem.SkipWrappedFunction;
+
+  export function overwriteMiddlewareArguments(val: any): Kareem.OverwriteArguments;
+
+  export default mongoose;
+}
