@@ -1,0 +1,35 @@
+{
+  "name": "mquery",
+  "version": "6.0.1",
+  "description": "Expressive query building for MongoDB",
+  "main": "lib/mquery.js",
+  "scripts": {
+    "test": "mocha --exit test/index.js test/*.test.js",
+    "fix-lint": "eslint . --fix",
+    "lint": "eslint ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/aheckmann/mquery.git"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "devDependencies": {
+    "eslint": "8.x",
+    "eslint-plugin-mocha-no-only": "1.1.1",
+    "mocha": "11.x",
+    "mongodb": "6.x"
+  },
+  "bugs": {
+    "url": "https://github.com/aheckmann/mquery/issues/new"
+  },
+  "author": "Aaron Heckmann <aaron.heckmann+github@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "mongodb",
+    "query",
+    "builder"
+  ],
+  "homepage": "https://github.com/aheckmann/mquery/"
+}

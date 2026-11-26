@@ -1,0 +1,211 @@
+# content-disposition
+
+[![NPM Version][npm-image]][npm-url]
+[![NPM Downloads][downloads-image]][downloads-url]
+[![Node.js Version][node-version-image]][node-version-url]
+[![Build Status][github-actions-ci-image]][github-actions-ci-url]
+[![Test Coverage][coveralls-image]][coveralls-url]
+
+Create and parse HTTP `Content-Disposition` header
+
+## Installation
+
+```sh
+$ npm install content-disposition
+```
+
+## API
+
+```js
+import { create, parse, format } from 'content-disposition';
+```
+
+### create(filename, options)
+
+Create an attachment `Content-Disposition` header value using the given file name,
+if supplied. The `filename` is optional and if no file name is desired, but you
+want to specify `options`, set `filename` to `undefined`.
+
+```js
+res.setHeader('Content-Disposition', create('∫ maths.pdf'));
+```
+
+**note** HTTP headers are of the ISO-8859-1 character set. If you are writing this
+header through a means different from `setHeader` in Node.js, you'll want to specify
+the `'binary'` encoding in Node.js.
+
+#### Options
+
+`contentDisposition` accepts these properties in the options object.
+
+##### fallback
+
+If the `filename` option is outside US-ASCII, then the file name is actually
+stored in a supplemental field for clients that support Unicode file names and
+a US-ASCII version of the file name is automatically generated.
+
+This specifies the US-ASCII file name to override the automatic generation or
+disables the generation all together, defaults to `true`.
+
+- A string will specify the US-ASCII file name to use in place of automatic
+  generation.
+- `false` will disable including a US-ASCII file name and only include the
+  Unicode version (unless the file name is already US-ASCII).
+- `true` will enable automatic generation if the file name is outside US-ASCII.
+
+If the `filename` option is US-ASCII and this option is specified and has a
+different value, then the `filename` option is encoded in the extended field
+and this set as the fallback field, even though they are both US-ASCII.
+
+##### type
+
+Specifies the disposition type, defaults to `"attachment"`. This can also be
+`"inline"`, or any other value (all values except inline are treated like
+`attachment`, but can convey additional information if both parties agree to
+it).
+
+### parse(string, options)
+
+```js
+const disposition = parse(
+  'attachment; filename="EURO rates.txt"; filename*=UTF-8\'\'%e2%82%ac%20rates.txt',
+);
+```
+
+Parse a `Content-Disposition` header string. This automatically handles extended
+("Unicode") parameters by decoding them and providing them under the standard
+parameter name. This will return an object with the following properties:
+
+- `type`: The disposition type (always lower case). Example: `'attachment'`
+
+- `parameters`: An object of the parameters in the disposition (name of parameter
+  always lower case and extended versions replace non-extended versions). Example:
+  `{filename: "€ rates.txt"}`
+
+#### Options
+
+##### multipart
+
+Parse parameters using browser `multipart/form-data` behavior.
+
+```js
+parse('form-data; name="file"; filename="the %22plans%22.pdf"', {
+  multipart: true,
+});
+```
+
+##### extended
+
+Parse RFC 5987 extended header parameters automatically when decoding
+parameters, defaults to `true`.
+
+### format(obj, options)
+
+```js
+const disposition = format({
+  type: 'attachment',
+  parameters: {
+    filename: '€ rates.txt',
+  },
+});
+```
+
+Formats an object to a `Content-Disposition` header string. This automatically
+handles extended ("Unicode") parameters and returns a string. Example:
+`'attachment; filename*=UTF-8''%E2%82%AC%20rates.txt'`
+
+#### Options
+
+##### multipart
+
+Format parameters using browser `multipart/form-data` behavior. This quotes
+parameter values, escapes `"` as `%22`, and writes Unicode values directly
+instead of using extended parameters.
+
+```js
+format(
+  {
+    type: 'form-data',
+    parameters: { name: 'file', filename: '€ rates.txt' },
+  },
+  { multipart: true },
+);
+```
+
+##### extended
+
+Encode Unicode parameter values using RFC 5987 extended header parameters,
+e.g. `filename*=`, defaults to `true`.
+
+## Examples
+
+### Send a file for download
+
+```js
+const contentDisposition = require('content-disposition');
+const fs = require('fs');
+const http = require('http');
+const onFinished = require('on-finished');
+
+const filePath = '/path/to/public/plans.pdf';
+
+http.createServer(function onRequest(req, res) {
+  // set headers
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', contentDisposition(filePath));
+
+  // send file
+  const stream = fs.createReadStream(filePath);
+  stream.pipe(res);
+  onFinished(res, function () {
+    stream.destroy();
+  });
+});
+```
+
+## Local demo
+
+Run the upload inspector locally:
+
+```sh
+npm run demo
+```
+
+Then open `http://127.0.0.1:3000` in your browser. The demo lets you upload files, inspect the multipart upload part headers sent by the browser, and compare them with the download `Content-Disposition` header generated by this package.
+
+## Testing
+
+```sh
+$ npm test
+```
+
+## References
+
+- [RFC 2616: Hypertext Transfer Protocol -- HTTP/1.1][rfc-2616]
+- [RFC 5987: Character Set and Language Encoding for Hypertext Transfer Protocol (HTTP) Header Field Parameters][rfc-5987]
+- [RFC 6266: Use of the Content-Disposition Header Field in the Hypertext Transfer Protocol (HTTP)][rfc-6266]
+- [RFC 8187: Indicating Character Encoding and Language for HTTP Header Field Parameters][rfc-8187]
+- [HTML Living Standard: Multipart form data][html-form]
+- [Test Cases for HTTP Content-Disposition header field (RFC 6266) and the Encodings defined in RFCs 2047, 2231 and 5987][tc-2231]
+
+[rfc-2616]: https://datatracker.ietf.org/doc/html/rfc2616
+[rfc-5987]: https://datatracker.ietf.org/doc/html/rfc5987
+[rfc-6266]: https://datatracker.ietf.org/doc/html/rfc6266
+[rfc-8187]: https://datatracker.ietf.org/doc/html/rfc8187
+[html-form]: https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#multipart-form-data
+[tc-2231]: http://greenbytes.de/tech/tc2231/
+
+## License
+
+[MIT](LICENSE)
+
+[npm-image]: https://img.shields.io/npm/v/content-disposition
+[npm-url]: https://www.npmjs.com/package/content-disposition
+[node-version-image]: https://img.shields.io/node/v/content-disposition
+[node-version-url]: https://nodejs.org/en/download
+[coveralls-image]: https://img.shields.io/coverallsCoverage/github/jshttp/content-disposition
+[coveralls-url]: https://coveralls.io/github/jshttp/content-disposition?branch=master
+[downloads-image]: https://img.shields.io/npm/dm/content-disposition
+[downloads-url]: https://www.npmjs.com/package/content-disposition
+[github-actions-ci-image]: https://img.shields.io/github/actions/workflow/status/jshttp/content-disposition/ci.yml
+[github-actions-ci-url]: https://github.com/jshttp/content-disposition/actions/workflows/ci.yml

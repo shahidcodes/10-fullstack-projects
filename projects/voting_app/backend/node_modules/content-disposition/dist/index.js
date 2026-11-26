@@ -1,0 +1,388 @@
+"use strict";
+/*!
+ * content-disposition
+ * Copyright(c) 2014-2017 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.create = create;
+exports.parse = parse;
+exports.decodeExtended = decodeExtended;
+exports.format = format;
+exports.encodeExtended = encodeExtended;
+/**
+ * Null object perf optimization. Faster than `Object.create(null)` and `{ __proto__: null }`.
+ */
+const NullObject = /* @__PURE__ */ (() => {
+    const C = function () { };
+    C.prototype = Object.create(null);
+    return C;
+})();
+/**
+ * Create an attachment Content-Disposition header.
+ */
+function create(filename, options) {
+    const type = options?.type || 'attachment';
+    const parameters = createParameters(filename, options?.fallback);
+    return format({ type, parameters }, { extended: false });
+}
+const SP = 32; // " "
+const HTAB = 9; // "\t"
+const SEMI = 59; // ";"
+const EQ = 61; // "="
+const DQUOTE = 34; // '"'
+const BSLASH = 92; // "\\"
+const ASTERISK = 42; // "*"
+/**
+ * Parse Content-Disposition header string.
+ */
+function parse(header, options) {
+    const len = header.length;
+    const multipart = options?.multipart === true;
+    const extended = options?.extended !== false;
+    let index = skipOWS(header, 0, header.length);
+    const typeStart = index;
+    index = parseToken(header, index, len);
+    const typeEnd = trailingOWS(header, typeStart, index);
+    const type = header.slice(typeStart, typeEnd).toLowerCase();
+    const parameters = new NullObject();
+    parameter: while (index < len) {
+        index = skipOWS(header, index + 1, len); // Skip over semicolon.
+        const keyStart = index;
+        while (index < len) {
+            const char = header.charCodeAt(index);
+            if (char === SEMI)
+                continue parameter;
+            if (char === EQ) {
+                const keyEnd = trailingOWS(header, keyStart, index);
+                const key = header.slice(keyStart, keyEnd).toLowerCase();
+                index = skipOWS(header, index + 1, len);
+                if (index < len && header.charCodeAt(index) === DQUOTE) {
+                    index++;
+                    let value = '';
+                    if (multipart) {
+                        while (index < len) {
+                            const code = header.charCodeAt(index++);
+                            if (code === DQUOTE) {
+                                index = parseToken(header, index, len);
+                                if (parameters[key] === undefined)
+                                    parameters[key] = value;
+                                break;
+                            }
+                            if (code === /* % */ 37 && index + 1 < len) {
+                                const code2 = header.charCodeAt(index);
+                                const code3 = header.charCodeAt(index + 1);
+                                if (code2 === 50 /* "2" */ && code3 === 50 /* "2" */) {
+                                    value += '"';
+                                    index += 2;
+                                    continue;
+                                }
+                                if (code2 === 48 /* "0" */) {
+                                    if (code3 === 100 /* "d" */ || code3 === 68 /* "D" */) {
+                                        value += '\r';
+                                        index += 2;
+                                        continue;
+                                    }
+                                    if (code3 === 97 /* "a" */ || code3 === 65 /* "A" */) {
+                                        value += '\n';
+                                        index += 2;
+                                        continue;
+                                    }
+                                }
+                            }
+                            value += String.fromCharCode(code);
+                        }
+                    }
+                    else {
+                        while (index < len) {
+                            const code = header.charCodeAt(index++);
+                            if (code === DQUOTE) {
+                                index = parseToken(header, index, len);
+                                if (parameters[key] === undefined)
+                                    parameters[key] = value;
+                                break;
+                            }
+                            if (code === BSLASH && index < len) {
+                                value += header[index++];
+                                continue;
+                            }
+                            value += String.fromCharCode(code);
+                        }
+                    }
+                    continue parameter;
+                }
+                const valueStart = index;
+                index = parseToken(header, index, len);
+                const valueEnd = trailingOWS(header, valueStart, index);
+                const value = header.slice(valueStart, valueEnd);
+                if (parameters[key] === undefined) {
+                    parameters[key] = value;
+                    if (extended && key.charCodeAt(key.length - 1) === ASTERISK) {
+                        const normalizedKey = key.slice(0, -1);
+                        const decoded = decodeExtended(value);
+                        if (decoded !== undefined)
+                            parameters[normalizedKey] = decoded;
+                    }
+                }
+                continue parameter;
+            }
+            index++;
+        }
+    }
+    return { type, parameters };
+}
+/**
+ * RegExp to match non attr-char, *after* encodeURIComponent (i.e. not including "%")
+ */
+const ENCODE_URL_ATTR_CHAR_REGEXP = /[\x00-\x20"'()*,/:;<=>?@[\\\]{}\x7f]/g; // eslint-disable-line no-control-regex
+/**
+ * RegExp to match non-US-ASCII characters.
+ */
+const NON_ASCII_REGEXP = /[^\x20-\x7e]/g;
+/**
+ * RegExp to match chars that must be quoted-pair in RFC 2616
+ */
+const QUOTE_REGEXP = /[\\"]/g;
+/**
+ * Match chars that can't be used in the filename for compatibility.
+ */
+const INVALID_FILENAME_REGEXP = /%[0-9A-Fa-f]{2}/;
+/**
+ * RegExp for various RFC 2616 grammar
+ *
+ * parameter     = token "=" ( token | quoted-string )
+ * token         = 1*<any CHAR except CTLs or separators>
+ * separators    = "(" | ")" | "<" | ">" | "@"
+ *               | "," | ";" | ":" | "\" | <">
+ *               | "/" | "[" | "]" | "?" | "="
+ *               | "{" | "}" | SP | HT
+ * quoted-string = ( <"> *(qdtext | quoted-pair ) <"> )
+ * qdtext        = <any TEXT except <">>
+ * quoted-pair   = "\" CHAR
+ * CHAR          = <any US-ASCII character (octets 0 - 127)>
+ * TEXT          = <any OCTET except CTLs, but including LWS>
+ * LWS           = [CRLF] 1*( SP | HT )
+ * CRLF          = CR LF
+ * CR            = <US-ASCII CR, carriage return (13)>
+ * LF            = <US-ASCII LF, linefeed (10)>
+ * SP            = <US-ASCII SP, space (32)>
+ * HT            = <US-ASCII HT, horizontal-tab (9)>
+ * CTL           = <any US-ASCII control character (octets 0 - 31) and DEL (127)>
+ * OCTET         = <any 8-bit sequence of data>
+ */
+const TEXT_REGEXP = /^[\x20-\x7e\x80-\xff]*$/;
+const ASCII_TEXT_REGEXP = /^[\x20-\x7e]*$/;
+const TOKEN_REGEXP = /^[!#$%&'*+.0-9A-Z^_`a-z|~-]+$/;
+/**
+ * Create parameters object from filename and fallback.
+ */
+function createParameters(filename, fallback = true) {
+    if (filename === undefined)
+        return;
+    if (typeof fallback === 'string') {
+        if (!ASCII_TEXT_REGEXP.test(fallback)) {
+            throw new TypeError('Fallback must be valid US-ASCII: ' + fallback);
+        }
+        if (fallback === filename)
+            return { filename };
+        return { filename: fallback, 'filename*': encodeExtended(filename) };
+    }
+    // Use `filename` when possible, otherwise use `filename*`.
+    if (ASCII_TEXT_REGEXP.test(filename) &&
+        !INVALID_FILENAME_REGEXP.test(filename)) {
+        return { filename };
+    }
+    if (fallback === false) {
+        return { 'filename*': encodeExtended(filename) };
+    }
+    return {
+        filename: getAscii(filename),
+        'filename*': encodeExtended(filename),
+    };
+}
+/**
+ * Decode a RFC 8187 field value (gracefully).
+ */
+function decodeExtended(str) {
+    const charsetEnd = str.indexOf("'");
+    if (charsetEnd <= 0) {
+        return undefined;
+    }
+    const languageEnd = str.indexOf("'", charsetEnd + 1);
+    if (languageEnd === -1) {
+        return undefined;
+    }
+    const charset = str.slice(0, charsetEnd).toLowerCase();
+    const encoded = str.slice(languageEnd + 1);
+    switch (charset) {
+        case 'iso-8859-1': {
+            return decodeHexEscapes(encoded);
+        }
+        case 'utf-8':
+        case 'utf8': {
+            return tryDecodeURIComponent(encoded);
+        }
+    }
+    return undefined;
+}
+/**
+ * Decode URI component but return `undefined` on error.
+ */
+function tryDecodeURIComponent(str) {
+    try {
+        return decodeURIComponent(str);
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * Parse a token starting at the provided index.
+ */
+function parseToken(str, index, len) {
+    while (index < len) {
+        const char = str.charCodeAt(index);
+        if (char === SEMI)
+            break;
+        index++;
+    }
+    return index;
+}
+/**
+ * Skip RFC 2616 linear whitespace (space / tab).
+ */
+function skipOWS(str, index, len) {
+    while (index < len) {
+        const char = str.charCodeAt(index);
+        if (char !== SP && char !== HTAB)
+            break;
+        index++;
+    }
+    return index;
+}
+/**
+ * Skip RFC 2616 linear whitespace (space / tab) from the end of a string.
+ */
+function trailingOWS(str, start, end) {
+    while (end > start) {
+        const char = str.charCodeAt(end - 1);
+        if (char !== SP && char !== HTAB)
+            break;
+        end--;
+    }
+    return end;
+}
+/**
+ * Format object to Content-Disposition header.
+ */
+function format(obj, options) {
+    const { type, parameters } = obj;
+    const multipart = options?.multipart === true;
+    const extended = options?.extended !== false;
+    if (!type || !TOKEN_REGEXP.test(type)) {
+        throw new TypeError('Invalid type: ' + type);
+    }
+    let result = type;
+    if (parameters) {
+        for (const param of Object.keys(parameters)) {
+            const value = parameters[param];
+            if (!TOKEN_REGEXP.test(param)) {
+                throw new TypeError('Invalid parameter name: ' + param);
+            }
+            if (multipart) {
+                result += '; ' + param + '=' + qmultipart(value);
+                continue;
+            }
+            if (TOKEN_REGEXP.test(value)) {
+                result += '; ' + param + '=' + value;
+                continue;
+            }
+            if (TEXT_REGEXP.test(value)) {
+                result += '; ' + param + '=' + qstring(value);
+                continue;
+            }
+            if (!extended) {
+                throw new TypeError('Invalid parameter value: ' + value);
+            }
+            result += '; ' + param + '*=' + encodeExtended(value);
+        }
+    }
+    return result;
+}
+/**
+ * Get US-ASCII version of string.
+ */
+function getAscii(val) {
+    // simple Unicode -> US-ASCII transformation
+    return val.replace(NON_ASCII_REGEXP, '?');
+}
+/**
+ * Percent encode a single character.
+ */
+function pencode(char) {
+    return '%' + char.charCodeAt(0).toString(16).toUpperCase();
+}
+/**
+ * Quote a string for HTTP.
+ */
+function qstring(str) {
+    return '"' + str.replace(QUOTE_REGEXP, '\\$&') + '"';
+}
+/**
+ * Quote a string for multipart/form-data.
+ *
+ * @see https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#multipart-form-data
+ */
+function qmultipart(str) {
+    return '"' + str.replace(/[\n\r"]/g, multipartEscape) + '"';
+}
+/**
+ * Escape a multipart/form-data string character.
+ */
+function multipartEscape(char) {
+    if (char === '\n')
+        return '%0A';
+    if (char === '\r')
+        return '%0D';
+    return '%22';
+}
+/**
+ * Encode a Unicode string for HTTP (RFC 8187).
+ */
+function encodeExtended(str) {
+    const encoded = encodeURIComponent(str).replace(ENCODE_URL_ATTR_CHAR_REGEXP, pencode);
+    return "UTF-8''" + encoded;
+}
+/**
+ * Check if a character is a hex digit [0-9A-Fa-f]
+ */
+function isHexDigit(char) {
+    const code = char.charCodeAt(0);
+    return ((code >= 48 && code <= 57) || // 0-9
+        (code >= 65 && code <= 70) || // A-F
+        (code >= 97 && code <= 102) // a-f
+    );
+}
+/**
+ * Decode hex escapes in a string (e.g., %20 -> space)
+ */
+function decodeHexEscapes(str) {
+    const firstEscape = str.indexOf('%');
+    if (firstEscape === -1)
+        return str;
+    let result = str.slice(0, firstEscape);
+    for (let idx = firstEscape; idx < str.length; idx++) {
+        if (str[idx] === '%' &&
+            idx + 2 < str.length &&
+            isHexDigit(str[idx + 1]) &&
+            isHexDigit(str[idx + 2])) {
+            result += String.fromCharCode(Number.parseInt(str[idx + 1] + str[idx + 2], 16));
+            idx += 2;
+        }
+        else {
+            result += str[idx];
+        }
+    }
+    return result;
+}
+//# sourceMappingURL=index.js.map
